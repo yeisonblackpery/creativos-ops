@@ -653,7 +653,14 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 // ════════════════════════════════════════════════════
 
 const { createClient } = supabase;
-const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession:     true,
+    autoRefreshToken:   true,
+    detectSessionInUrl: true,
+    storageKey:         'creativos-ops-auth'
+  }
+});
 
 // ── ESTADO LOCAL ──────────────────────────────────
 let D = {
@@ -677,16 +684,31 @@ function pad(n)       { return String(n).padStart(2,'0'); }
 function esc(s)       { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // ── AUTH ──────────────────────────────────────────
-sb.auth.onAuthStateChange((event, session) => {
+// 1. Revisar sesión existente al cargar (evita parpadeo en refresh)
+sb.auth.getSession().then(({ data: { session } }) => {
   if(session) {
     currentUser = session.user;
     showApp();
     setupRealtime();
     loadAll();
   } else {
+    showLogin();
+  }
+});
+
+// 2. Escuchar cambios futuros (login, logout, token expirado)
+sb.auth.onAuthStateChange((event, session) => {
+  if(event === 'SIGNED_IN' && session && !currentUser) {
+    currentUser = session.user;
+    showApp();
+    setupRealtime();
+    loadAll();
+  } else if(event === 'SIGNED_OUT') {
     currentUser = null;
     teardownRealtime();
     showLogin();
+  } else if(event === 'TOKEN_REFRESHED' && session) {
+    currentUser = session.user; // renovar referencia silenciosamente
   }
 });
 
