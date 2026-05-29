@@ -600,7 +600,7 @@ textarea.fctrl{resize:vertical;min-height:70px;}
     <div class="modal-body">
       <input type="hidden" id="editId">
       <div class="fg"><label class="flabel">Título *</label><input type="text" class="fctrl" id="fTitle" placeholder="Ej: Post lanzamiento producto"></div>
-      <div class="fg"><label class="flabel">Entidad / Cliente *</label><input type="text" class="fctrl" id="fClient" placeholder="Ej: Creativa Agency" list="cliDL"><datalist id="cliDL"></datalist></div>
+      <div class="fg"><label class="flabel">Entidad / Cliente *</label><input type="text" class="fctrl" id="mClient" placeholder="Ej: Creativa Agency" list="cliDL"><datalist id="cliDL"></datalist></div>
       <div class="frow">
         <div class="fg"><label class="flabel">Tipo *</label><select class="fctrl" id="fType" onchange="typeChanged()"><option value="">Seleccionar...</option></select></div>
         <div class="fg"><label class="flabel">Créditos</label><input type="number" class="fctrl" id="fCredits" min="1" max="50" value="1"></div>
@@ -1011,7 +1011,7 @@ function openModal(id) {
   if(isEdit) {
     const t=D.tasks.find(x=>x.id===id); if(!t) return;
     document.getElementById('fTitle').value=t.title;
-    document.getElementById('fClient').value=t.client;
+    document.getElementById('mClient').value=t.client;
     document.getElementById('fType').value=t.type;
     document.getElementById('fCredits').value=t.credits;
     document.getElementById('fReqDate').value=t.reqDate;
@@ -1019,7 +1019,7 @@ function openModal(id) {
     document.getElementById('fStatus2').value=t.status;
     document.getElementById('fNotes').value=t.notes||'';
   } else {
-    ['fTitle','fClient','fNotes'].forEach(id=>document.getElementById(id).value='');
+    ['fTitle','mClient','fNotes'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('fType').value='';
     document.getElementById('fCredits').value=1;
     document.getElementById('fReqDate').value=today();
@@ -1036,7 +1036,7 @@ function typeChanged(){const t=D.types.find(x=>x.name===document.getElementById(
 async function saveTask() {
   const id=document.getElementById('editId').value;
   const title=document.getElementById('fTitle').value.trim();
-  const client=document.getElementById('fClient').value.trim();
+  const client=document.getElementById('mClient').value.trim();
   const type=document.getElementById('fType').value;
   const credits=parseInt(document.getElementById('fCredits').value)||1;
   const reqDate=document.getElementById('fReqDate').value;
@@ -1176,7 +1176,13 @@ async function delType(id) {
 
 function renderClientsList() {
   const c=document.getElementById('clientsList');
-  c.innerHTML=D.clients.length?D.clients.map((cl,i)=>`<div class="list-item"><span>${esc(cl)}</span><button class="act-btn del" onclick="delClient(${i})">×</button></div>`).join(''):'<div style="color:var(--gray-text);font-size:12px;padding:8px 0;">Sin entidades.</div>';
+  c.innerHTML=D.clients.length
+    ? D.clients.map(cl=>`
+        <div class="list-item">
+          <span>${esc(cl)}</span>
+          <button class="act-btn del" onclick="delClient(${JSON.stringify(cl)})">×</button>
+        </div>`).join('')
+    : '<div style="color:var(--gray-text);font-size:12px;padding:8px 0;">Sin entidades.</div>';
 }
 
 async function addClient() {
@@ -1187,9 +1193,10 @@ async function addClient() {
   document.getElementById('newClientName').value=''; toast('Agregado.','ok');
 }
 
-async function delClient(i) {
-  if(!(await showConfirm(`"${D.clients[i]}" se eliminará de la lista de entidades.`,'¿Eliminar entidad?','Eliminar'))) return;
-  D.clients.splice(i,1); await saveConfig(); renderClientsList(); toast('Eliminado.','warn');
+async function delClient(name) {
+  if(!(await showConfirm(`"${esc(name)}" se eliminará de la lista de entidades.`,'¿Eliminar entidad?','Eliminar'))) return;
+  D.clients=D.clients.filter(c=>c!==name);
+  await saveConfig(); renderClientsList(); toast('Eliminado.','warn');
 }
 
 // ── UI UTILS ──────────────────────────────────────
