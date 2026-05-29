@@ -1004,7 +1004,7 @@ async function delTask(id) {
 // ── MODAL ─────────────────────────────────────────
 function openModal(id) {
   document.getElementById('fType').innerHTML='<option value="">Seleccionar...</option>'+D.types.map(t=>`<option value="${esc(t.name)}">${esc(t.name)} (${t.credits} cr.)</option>`).join('');
-  document.getElementById('cliDL').innerHTML=D.clients.map(c=>`<option value="${esc(c)}">`).join('');
+  document.getElementById('cliDL').innerHTML=[...D.clients].sort().map(c=>`<option value="${esc(c)}">`).join('');
   const isEdit=!!id;
   document.getElementById('modalTitle').textContent=isEdit?'Editar Pieza':'Nueva Pieza';
   document.getElementById('editId').value=id||'';
@@ -1064,7 +1064,13 @@ async function saveTask() {
       const {error}=await sb.from('tasks').insert(row);
       if(error) throw error;
     }
-    if(!D.clients.includes(client)){D.clients.push(client);await saveConfig();}
+    // Gestión de entidad: notificar si ya existe o auto-agregar si es nueva
+    const clientExists = D.clients.map(c=>c.toLowerCase()).includes(client.toLowerCase());
+    if(!clientExists){
+      D.clients.push(client);
+      await saveConfig();
+      toast(`Entidad "${client}" agregada a tu lista de clientes.`,'ok');
+    }
     toast(id?'Pieza actualizada.':'Pieza creada.','ok');
     closeModal();
   } catch(e){toast('Error: '+e.message,'err');}
@@ -1176,27 +1182,37 @@ async function delType(id) {
 
 function renderClientsList() {
   const c=document.getElementById('clientsList');
-  c.innerHTML=D.clients.length
-    ? D.clients.map(cl=>`
-        <div class="list-item">
-          <span>${esc(cl)}</span>
-          <button class="act-btn del" onclick="delClient(${JSON.stringify(cl)})">×</button>
-        </div>`).join('')
-    : '<div style="color:var(--gray-text);font-size:12px;padding:8px 0;">Sin entidades.</div>';
+  if(!D.clients.length){
+    c.innerHTML='<div style="color:var(--gray-text);font-size:12px;padding:8px 0;">Sin entidades registradas.</div>';
+    return;
+  }
+  c.innerHTML=D.clients.map(cl=>`
+    <div class="list-item">
+      <span class="li-name">${esc(cl)}</span>
+      <button class="act-btn del" data-client="${esc(cl)}" onclick="delClient(this.dataset.client)">×</button>
+    </div>`).join('');
 }
 
 async function addClient() {
   const name=document.getElementById('newClientName').value.trim();
-  if(!name){toast('Nombre requerido.','err');return;}
-  if(D.clients.includes(name)){toast('Ya existe.','err');return;}
-  D.clients.push(name); await saveConfig(); renderClientsList();
-  document.getElementById('newClientName').value=''; toast('Agregado.','ok');
+  if(!name){ toast('Escribe el nombre de la entidad.','err'); return; }
+  if(D.clients.map(c=>c.toLowerCase()).includes(name.toLowerCase())){
+    toast(`"${name}" ya existe en tu lista.`,'warn'); return;
+  }
+  D.clients.push(name);
+  await saveConfig();
+  renderClientsList();
+  document.getElementById('newClientName').value='';
+  toast(`Entidad "${name}" agregada.`,'ok');
 }
 
 async function delClient(name) {
-  if(!(await showConfirm(`"${esc(name)}" se eliminará de la lista de entidades.`,'¿Eliminar entidad?','Eliminar'))) return;
+  if(!name){ toast('Error: entidad no identificada.','err'); return; }
+  if(!(await showConfirm(`"${name}" se eliminará de la lista de entidades.`,'¿Eliminar entidad?','Eliminar'))) return;
   D.clients=D.clients.filter(c=>c!==name);
-  await saveConfig(); renderClientsList(); toast('Eliminado.','warn');
+  await saveConfig();
+  renderClientsList();
+  toast(`Entidad "${name}" eliminada.`,'warn');
 }
 
 // ── UI UTILS ──────────────────────────────────────
