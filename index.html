@@ -764,7 +764,10 @@ function getRoleLabel(email) {
 function setupRealtime() {
   realtimeChannel = sb.channel('creativos-ops-live')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => loadTasks())
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'config' }, () => loadConfig())
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'config' }, payload => {
+      // Usar payload.new directamente evita el race condition de un SELECT adicional
+      if(payload.new && !_isSaving) applyConfigData(payload.new);
+    })
     .subscribe(status => setLive(status === 'SUBSCRIBED'));
 }
 
@@ -785,20 +788,23 @@ function setSaving(on) { const el=document.getElementById('savingDot'); if(el) e
 // ── DATA LOAD ─────────────────────────────────────
 async function loadAll() { await Promise.all([loadConfig(), loadTasks()]); }
 
+function applyConfigData(data) {
+  if(!data) return;
+  D.designer   = { name: data.designer_name, package: data.package_credits };
+  D.types      = data.types   || [];
+  D.clients    = data.clients || [];
+  D.cycleStart = data.cycle_start || monthStart();
+  D.settings   = { autoReset: data.auto_reset };
+  if(curSec==='settings') renderSettings();
+  updateMeter(creditsUsed(), D.designer.package);
+}
+
 async function loadConfig() {
   const { data, error } = await sb.from('config').select('*').eq('id',1).single();
   if(error) { console.error('Config load error:', error); return; }
-  if(data) {
-    D.designer   = { name: data.designer_name, package: data.package_credits };
-    D.types      = data.types   || [];
-    D.clients    = data.clients || [];
-    D.cycleStart = data.cycle_start || monthStart();
-    D.settings   = { autoReset: data.auto_reset };
-    // Solo verificar reset en la carga inicial, no en cada evento realtime
-    if(!_configLoaded) { _configLoaded = true; checkAutoReset(); }
-  }
-  if(curSec==='settings') renderSettings();
-  updateMeter(creditsUsed(), D.designer.package);
+  applyConfigData(data);
+  // Solo verificar reset en la carga inicial
+  if(!_configLoaded) { _configLoaded = true; checkAutoReset(); }
 }
 
 async function loadTasks() {
@@ -825,11 +831,18 @@ async function saveConfig() {
   if(_isSaving) return;
   _isSaving = true;
   setSaving(true);
+  // Capturar los datos AHORA antes de cualquier modificación asíncrona
+  const payload = {
+    id: 1,
+    designer_name:   D.designer.name,
+    package_credits: D.designer.package,
+    types:           D.types,
+    clients:         [...D.clients], // copia para evitar mutaciones durante el await
+    cycle_start:     D.cycleStart,
+    auto_reset:      D.settings.autoReset
+  };
   try {
-    const { error } = await sb.from('config').upsert({
-      id: 1, designer_name: D.designer.name, package_credits: D.designer.package,
-      types: D.types, clients: D.clients, cycle_start: D.cycleStart, auto_reset: D.settings.autoReset
-    });
+    const { error } = await sb.from('config').upsert(payload);
     if(error) { console.error('saveConfig error:', error); toast('Error al guardar: '+error.message,'err'); }
   } catch(e) {
     console.error('saveConfig fetch error:', e);
